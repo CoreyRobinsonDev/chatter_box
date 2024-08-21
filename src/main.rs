@@ -32,8 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     let app = axum::Router::new()
         .route("/", get(|| async { (StatusCode::BAD_REQUEST, "Unable to upgrade request.") }))
-        .route("/kick/chat", get(|| async { (StatusCode::BAD_REQUEST, "Unable to upgrade request.") }))
-        .route("/twitch/chat", get(|| async { (StatusCode::BAD_REQUEST, "Unable to upgrade request.") }))
+        .fallback(|| async { (StatusCode::NOT_FOUND, "Not Found") })
         .layer(layer);
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
