@@ -1,1 +1,2 @@
-mod kick;
+pub mod kick;
+mod lib;
