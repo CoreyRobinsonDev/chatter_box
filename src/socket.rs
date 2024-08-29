@@ -1,10 +1,10 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}, time::Duration};
+use std::{collections::{HashMap, HashSet}, sync::{Arc, Mutex}, time::Duration};
 
 use socketioxide::extract::{Data, State, SocketRef};
 use tokio::time::sleep;
 use tracing::{info, error};
 
-use crate::scraping::kick::{go_to, scrape};
+use crate::scraping::{kick, lib::{drop_dups, MessageOut}};
 
 
  pub async fn socket_manager(socket: SocketRef) {
@@ -30,10 +30,10 @@ fn join(
     let streamer = streamer.to_owned();
 
     if !rooms.contains_key(&streamer) {
-        let tab = match go_to(browser, &streamer) {
+        let tab = match kick::go_to(browser, &streamer) {
             Ok(t) => t,
             Err(e) => {
-                error!("ON GO TO: {}", e);
+                error!("go_to(): {}", e);
                 return;
             } 
         };
@@ -41,6 +41,7 @@ fn join(
         socket.join(streamer.to_owned()).unwrap();
         rooms.insert(streamer.to_owned(), 1);
         tokio::task::spawn(async move {
+            let mut cache = HashSet::<String>::new();
             loop {
                 // underscore to silence warning
                 let mut _has_connections = false;
@@ -49,29 +50,32 @@ fn join(
                     let rooms = rooms.lock().unwrap();
                     _has_connections =  rooms.contains_key(&streamer);
                 }
-                if !_has_connections { break; }
-                let messages = match scrape(&tab) {
-                    Ok(msgs) => msgs,
+                if !_has_connections { 
+                    tab.close_target().unwrap();
+                    break; 
+                }
+                let (messages, new_cache) = match kick::scrape(&tab) {
+                    Ok(msgs) => drop_dups(msgs, cache),
                     Err(e) => {
-                        error!("ON SCRAPE: {e}");
+                        error!("scrape(): {e}");
                         break;
                     }
                 };
+                cache = new_cache;
 
                 for msg in messages {
-                    info!(
-                        "EMIT: {} {} {} {}", 
-                        msg.username,
-                        msg.user_color,
-                        msg.content.clone().unwrap_or("".to_string()),
-                        msg.emote_html.clone().unwrap_or("".to_string()),
-                    ); 
-                    socket
+                    match socket
                         .within(streamer.to_owned())
-                        .emit("chat", msg)
-                        .unwrap();
+                        .emit("chat", MessageOut::from(msg)) {
+                        Ok(_) => {},
+                        Err(e) => {
+                            tab.close_target().unwrap();
+                            error!("socket: {e}");
+                            return;
+                        }
+                    };
                 }
-                sleep(Duration::new(1,0)).await;
+                sleep(Duration::from_millis(1000)).await;
             }
         });
     } else {

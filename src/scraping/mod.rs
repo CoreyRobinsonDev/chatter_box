@@ -1,2 +1,2 @@
 pub mod kick;
-mod lib;
+pub mod lib;

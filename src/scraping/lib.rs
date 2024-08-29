@@ -1,10 +1,45 @@
+use std::{collections::HashSet, rc::Rc};
+
 #[derive(Debug, serde::Serialize)]
-pub struct Message {
-    pub username: String,
-    pub user_color: String,
-    pub content: Option<String>,
-    pub emote_html: Option<String>
+pub struct MessageOut {
+    pub username: Rc<str>,
+    pub user_color: Rc<str>,
+    pub content: Option<Rc<str>>,
+    pub emote_html: Option<Rc<str>>
 }
+
+impl MessageOut {
+    pub fn from(message: Message) -> Self {
+        return Self { 
+            username: message.username, 
+            user_color: message.user_color, 
+            content: message.content, 
+            emote_html: message.emote_html 
+        }
+    }
+}
+
+pub struct Message {
+    pub id: String,
+    pub username: Rc<str>,
+    pub user_color: Rc<str>,
+    pub content: Option<Rc<str>>,
+    pub emote_html: Option<Rc<str>>
+}
+
+impl Message {
+    pub fn new(username: Rc<str>, user_color: Rc<str>, content: Option<Rc<str>>, emote_html: Option<Rc<str>>) -> Self {
+        return Self { 
+            id: encode(
+                &username.to_string(), 
+                content.as_ref(), 
+                emote_html.as_ref()
+            ),
+            username, user_color, content, emote_html 
+        }
+    }
+}
+
 
 pub struct PageMeta {
     user_agents: Vec<String>,
@@ -47,3 +82,33 @@ impl PageMeta {
         return self.user_agents.get(idx).unwrap();
     }
 }
+
+fn encode(
+    username: impl Into<String>, 
+    content: Option<&Rc<str>>, 
+    emote_html: Option<&Rc<str>>
+) -> String {
+    use base64::prelude::*;
+    let mut id = username.into();
+    id += content
+        .unwrap_or(&Rc::<str>::from(""));
+    id += emote_html
+        .unwrap_or(&Rc::<str>::from(""));
+
+    return BASE64_STANDARD.encode(id);
+}
+
+pub fn drop_dups(messages: Vec<Message>, cache: HashSet<String>) -> (Vec<Message>, HashSet<String>) {
+    let mut new_cache = HashSet::<String>::new();
+    let mut msgs = Vec::<Message>::new();
+
+    for msg in messages {
+        new_cache.insert(msg.id.clone());
+        if !cache.contains(&msg.id) {
+            msgs.push(msg);
+        }
+    } 
+
+    return (msgs, new_cache);
+}
+
